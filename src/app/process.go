@@ -16,12 +16,10 @@ import (
 	"time"
 
 	"github.com/cakturk/go-netstat/netstat"
-	"github.com/f1bonacc1/process-compose/src/types"
-
 	"github.com/f1bonacc1/process-compose/src/command"
 	"github.com/f1bonacc1/process-compose/src/health"
 	"github.com/f1bonacc1/process-compose/src/pclog"
-
+	"github.com/f1bonacc1/process-compose/src/types"
 	"github.com/fatih/color"
 	"github.com/rs/zerolog/log"
 	puproc "github.com/shirou/gopsutil/v4/process"
@@ -36,49 +34,50 @@ const (
 
 type Process struct {
 	sync.Mutex
-	globalEnv           []string
-	confMtx             sync.Mutex
-	procConf            *types.ProcessConfig
-	procState           *types.ProcessState
-	stateMtx            sync.Mutex
-	procCond            sync.Cond
-	procStartedChan     chan struct{}
-	procStateChan       chan string
-	procReadyCtx        context.Context
-	readyCancelFn       context.CancelFunc
-	procLogReadyCtx     context.Context
-	readyLogCancelFn    context.CancelCauseFunc
-	procRunCtx          context.Context
-	runCancelFn         context.CancelFunc
-	waitForPassCtx      context.Context
-	waitForPassCancelFn context.CancelFunc
-	mtxStopFn           sync.Mutex
-	waitForStoppedCtx   context.Context
-	waitForStoppedFn    context.CancelFunc
-	procColor           func(a ...interface{}) string
-	noColor             func(a ...interface{}) string
-	redColor            func(a ...interface{}) string
-	logBuffer           *pclog.ProcessLogBuffer
-	logger              pclog.PcLogger
-	command             command.Commander
-	started             bool
-	done                bool
-	timeMutex           sync.Mutex
-	startTime           time.Time
-	liveProber          *health.Prober
-	readyProber         *health.Prober
-	shellConfig         command.ShellConfig
-	printLogs           bool
-	isMain              bool
-	extraArgs           []string
-	isStopped           atomic.Bool
-	stdin               io.WriteCloser
-	passProvided        bool
-	isTuiEnabled        bool
-	stdOutDone          chan struct{}
-	stdErrDone          chan struct{}
-	dotEnvVars          map[string]string
-	truncateLogs        bool
+	globalEnv                   []string
+	confMtx                     sync.Mutex
+	procConf                    *types.ProcessConfig
+	procState                   *types.ProcessState
+	procStateLastResourceUpdate time.Time
+	stateMtx                    sync.Mutex
+	procCond                    sync.Cond
+	procStartedChan             chan struct{}
+	procStateChan               chan string
+	procReadyCtx                context.Context
+	readyCancelFn               context.CancelFunc
+	procLogReadyCtx             context.Context
+	readyLogCancelFn            context.CancelCauseFunc
+	procRunCtx                  context.Context
+	runCancelFn                 context.CancelFunc
+	waitForPassCtx              context.Context
+	waitForPassCancelFn         context.CancelFunc
+	mtxStopFn                   sync.Mutex
+	waitForStoppedCtx           context.Context
+	waitForStoppedFn            context.CancelFunc
+	procColor                   func(a ...interface{}) string
+	noColor                     func(a ...interface{}) string
+	redColor                    func(a ...interface{}) string
+	logBuffer                   *pclog.ProcessLogBuffer
+	logger                      pclog.PcLogger
+	command                     command.Commander
+	started                     bool
+	done                        bool
+	timeMutex                   sync.Mutex
+	startTime                   time.Time
+	liveProber                  *health.Prober
+	readyProber                 *health.Prober
+	shellConfig                 command.ShellConfig
+	printLogs                   bool
+	isMain                      bool
+	extraArgs                   []string
+	isStopped                   atomic.Bool
+	stdin                       io.WriteCloser
+	passProvided                bool
+	isTuiEnabled                bool
+	stdOutDone                  chan struct{}
+	stdErrDone                  chan struct{}
+	dotEnvVars                  map[string]string
+	truncateLogs                bool
 }
 
 func NewProcess(opts ...ProcOpts) *Process {
@@ -543,7 +542,19 @@ func (p *Process) updateProcState() {
 		p.procState.SystemTime = HumanDuration(dur)
 		p.procState.Age = dur
 		p.procState.Name = p.getName()
-		p.procState.Mem, p.procState.CPU = p.getResourceUsage()
+
+		lastUpdateDur := time.Since(p.procStateLastResourceUpdate)
+		if lastUpdateDur > 5*time.Second {
+			go func() {
+				mem, cpu := p.getResourceUsage()
+
+				p.stateMtx.Lock()
+				defer p.stateMtx.Unlock()
+				p.procState.Mem, p.procState.CPU = mem, cpu
+				p.procStateLastResourceUpdate = time.Now()
+			}()
+			return
+		}
 	}
 	p.procState.IsRunning = isRunning
 	p.procState.IsElevated = p.procConf.IsElevated
