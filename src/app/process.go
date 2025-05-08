@@ -543,8 +543,8 @@ func (p *Process) updateProcState() {
 		p.procState.Age = dur
 		p.procState.Name = p.getName()
 
-		lastUpdateDur := time.Since(p.procStateLastResourceUpdate)
-		if lastUpdateDur > 5*time.Second {
+		lastResourceUpdateElaps := time.Since(p.procStateLastResourceUpdate)
+		if lastResourceUpdateElaps > 5*time.Second {
 			go func() {
 				mem, cpu := p.getResourceUsage()
 
@@ -553,7 +553,6 @@ func (p *Process) updateProcState() {
 				p.procState.Mem, p.procState.CPU = mem, cpu
 				p.procStateLastResourceUpdate = time.Now()
 			}()
-			return
 		}
 	}
 	p.procState.IsRunning = isRunning
