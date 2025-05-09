@@ -544,7 +544,7 @@ func (p *Process) updateProcState() {
 		p.procState.Name = p.getName()
 
 		lastResourceUpdateElaps := time.Since(p.procStateLastResourceUpdate)
-		if lastResourceUpdateElaps > 5*time.Second {
+		if lastResourceUpdateElaps > 7*time.Second {
 			go func() {
 				mem, cpu := p.getResourceUsage()
 
